@@ -1,0 +1,1 @@
+python main.py --mode train_eva --model_peptide_mode trans --model_spec_mode chrom_split 
