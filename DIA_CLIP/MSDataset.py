@@ -14,8 +14,8 @@ class MSDataset(nn.Module):
             device="cpu",
             train_ratio=0.8,
             is_train=True,
-            divide_charge = 1,
-            channel_norm = 0
+            divide_charge = True,
+            channel_norm = False
     ):
         super().__init__()
         self.device = device
@@ -82,16 +82,15 @@ class MSDataset(nn.Module):
         peptide = ' '.join(peptide)
         modification = ','.join(f"{key}:{value}" for key, value in pre['modification'].items())
 
-
         return {"peptide_chrom": peptide_chrom.float().to(self.device),
                 "peptide_mz": peptide_mz.float().to(self.device),
                 "peptide_RT": peptide_RT.float().to(self.device),
                 "peptide": peptide,
+                "modification": modification,
                 "fragment_chrom": frag_chrom.float().to(self.device),
                 "fragment_mz": frag_mz.float().to(self.device),
                 "fragment_RT": frag_RT.float().to(self.device),
                 "fragment_ion_type": frag_type_code.float().to(self.device),
-                "modification": modification,
                 "label": label.float().to(self.device)}
 
     def iontype_convert(self, frag_type):
@@ -100,11 +99,12 @@ class MSDataset(nn.Module):
         for ion in frag_type:
             if ion.find('b') >= 0:
                 code.append(float(''.join(filter(str.isdigit, ion))))
-            elif ion.find('b') >= 0:    
+            elif ion.find('y') >= 0:
                 code.append(-1 * float(''.join(filter(str.isdigit, ion))))
             else:
                 code.append(0.0)
         return torch.tensor(code), torch.tensor(charge)
+
 
 class DataChecker:
     def __init__(self, RT_dim, ion_num):

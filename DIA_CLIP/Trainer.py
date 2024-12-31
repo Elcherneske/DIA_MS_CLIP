@@ -1,4 +1,6 @@
 import argparse
+import os
+
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -14,9 +16,10 @@ from Visualizer import Visualizer
 
 
 class ModelTrainer():
-    def __init__(self, model, optimizer='adam', lr=0.0001, is_save_model = True, is_model_init = True):
+    def __init__(self, model, criterion, optimizer='adam', lr=0.0001, is_save_model = True, is_model_init = True):
         super().__init__()
         self.model = model
+        self.criterion = criterion
         self.vis = Visualizer()
         self.is_save_model = is_save_model
         self.is_model_init = is_model_init
@@ -25,7 +28,7 @@ class ModelTrainer():
         elif optimizer == 'sgd':
             self.optimizer = SGD(self.model.parameters(), lr=lr)
 
-    def train(self, criterion, train_loader, num_epochs, retrain_path=None):
+    def train(self, train_loader, num_epochs, retrain_path=None):
         if retrain_path:
             self.model.load(retrain_path)
         else:
@@ -36,11 +39,11 @@ class ModelTrainer():
                 print("No retrain, model default init")
 
         for epoch in range(num_epochs):
-            self.train_one_epoch(epoch, criterion, train_loader)
+            self.train_one_epoch(epoch, train_loader)
             if self.is_save_model:
                 self.save_model(epoch)
 
-    def train_and_validation(self, criterion, train_loader, val_loader, num_epochs, retrain_path=None):
+    def train_and_validation(self, train_loader, val_loader, num_epochs, retrain_path=None):
         if retrain_path:
             self.model.load(retrain_path)
         else:
@@ -51,39 +54,45 @@ class ModelTrainer():
                 print("No retrain, model default init")
 
         for epoch in range(num_epochs):
-            self.train_one_epoch(epoch_ID=epoch, num_epochs=num_epochs, criterion=criterion, train_loader=train_loader)
+            self.train_one_epoch(epoch=epoch, num_epochs=num_epochs, train_loader=train_loader)
             if self.is_save_model:
                 self.save_model(epoch)
+            self.validate(val_loader=val_loader, val_ID=epoch, plot_hotfig=True)
 
-            self.validate(criterion=criterion, val_loader=val_loader, val_ID=epoch, plot_hotfig=True)
-
-    def train_one_epoch(self, epoch_ID, num_epochs, criterion, train_loader):
+    def train_one_epoch(self, train_loader, epoch, num_epochs):
         self.model.train()
         loss_epoch = []
-        with tqdm(train_loader, desc=f"Epoch: {epoch_ID + 1}/{num_epochs}") as pbar:
-            for n_step, data in enumerate(pbar):
+        with tqdm(enumerate(train_loader), desc=f"Epoch: {epoch + 1}/{num_epochs}") as pbar:
+            for n_step, data in pbar:
                 peptide_feature, chrom_feature = self.model(data)
                 self.optimizer.zero_grad()
-                loss, loss_t, loss_f, inner_loss = criterion(peptide_feature, chrom_feature, data["label"])
-                loss.backward()
+                loss_dict = self.criterion(peptide_feature, chrom_feature, data["label"])
+                loss_dict['loss'].backward()
                 self.optimizer.step()
-                loss_epoch.append(loss.item())
+                loss_epoch.append(loss_dict['loss'].item())
 
                 if n_step % 25 == 0:
-                    pbar.set_postfix(n_step=n_step, Loss=loss.item(), Loss_t=loss_t.item(), Loss_f=loss_f.item(), Inner_Loss=inner_loss.item())
-                if n_step % 500 == 0:
-                    self.vis.plotHotMap(peptide_feature=peptide_feature, chrom_feature=chrom_feature, label=data["label"], fig_name="train_epoch_" + str(epoch_ID) + "_n_" + str(n_step) + '_heatmap_imshow.png')
+                    pbar.set_postfix(n_step=n_step, Loss=loss_dict['loss'].item(), Loss_t=loss_dict['loss_t'].item(), Loss_f=loss_dict['loss_f'].item(), Inner_Loss=loss_dict['inner_loss'].item())
+                if n_step % 1000 == 0:
+                    self.vis.plotHotMap(peptide_feature=peptide_feature, chrom_feature=chrom_feature, label=data["label"], fig_name="train_epoch_" + str(epoch) + "_n_" + str(n_step) + '_heatmap_imshow.png')
 
-        print(f'Epoch [{epoch_ID + 1}], Ave_Loss: {np.sum(loss_epoch) / len(train_loader):.4f}')
-        with open("./loss/training_loss_" + str(epoch_ID) + ".txt", "w") as fp:
+        print(f'Epoch [{epoch + 1}], Ave_Loss: {np.sum(loss_epoch) / len(train_loader):.4f}')
+
+        if not os.path.exists('./loss'):
+            os.makedirs('./loss')
+            print(f"路径 {'./loss'} 已创建")
+        with open("./loss/training_loss_" + str(epoch) + ".txt", "w") as fp:
             for loss in loss_epoch:
                 fp.write(str(loss) + "\n")
 
     def save_model(self, epoch_ID):
+        if not os.path.exists('./model'):
+            os.makedirs('./model')
+            print(f"路径 {'./model'} 已创建")
         torch.save(self.model.state_dict(), "./model/epoch_" + str(epoch_ID) + "_model.pt")
         print(f'Model saved to {"./model/epoch_" + str(epoch_ID) + "_model.pt"}')
 
-    def validate(self, criterion, val_loader, model_path=None, val_ID=0, plot_hotfig = False):
+    def validate(self, val_loader, model_path=None, epoch=0, plot_hotfig=True):
         if not val_loader:
             print("No validation")
             return
@@ -95,16 +104,18 @@ class ModelTrainer():
         label = []
         score = []
         with torch.no_grad():
-            for n_step, data in enumerate(val_loader):
-                peptide_feature, chrom_feature = self.model(data)
-                loss, loss_t, loss_f, inner_loss = criterion(peptide_feature, chrom_feature, data["label"])
-                loss_epoch.append(loss.item())
-                label += data["label"].cpu().detach().numpy().tolist()
-                score += (-1 * torch.norm(peptide_feature - chrom_feature, p=2, dim=-1, keepdim=False)).cpu().detach().numpy().tolist()
-                if plot_hotfig and n_step % 100 == 0:
-                    print(f"n_step: {n_step}, Loss: {loss.item()}, Loss_t:{loss_t.item()}, Loss_f:{loss_f.item()}, Inner Loss:{inner_loss.item()}")
-                    self.vis.plotHotMap(peptide_feature=peptide_feature, chrom_feature=chrom_feature, label=data["label"], fig_name="val_epoch_" + str(val_ID) + "_n_" + str(n_step) + '_heatmap_imshow.png')
+            with tqdm(enumerate(val_loader), desc=f"Validation:") as pbar:
+                for n_step, data in pbar:
+                    peptide_feature, chrom_feature = self.model(data)
+                    loss_dict = self.criterion(peptide_feature, chrom_feature, data["label"])
+                    loss_epoch.append(loss_dict['loss'].item())
+                    label += data["label"].cpu().detach().numpy().tolist()
+                    score += (-1 * torch.norm(peptide_feature - chrom_feature, p=2, dim=-1, keepdim=False)).cpu().detach().numpy().tolist()
+                    if plot_hotfig and n_step % 100 == 0:
+                        pbar.set_postfix(n_step=n_step, Loss=loss_dict['loss'].item(), Loss_t=loss_dict['loss_t'].item(), Loss_f=loss_dict['loss_f'].item(), Inner_Loss=loss_dict['inner_loss'].item())
+                        self.vis.plotHotMap(peptide_feature=peptide_feature, chrom_feature=chrom_feature, label=data["label"], fig_name="val_epoch_" + str(epoch) + "_n_" + str(n_step) + '_heatmap_imshow.png')
 
+            # calculate AUC and AUPRC
             AUC = roc_auc_score(label, score)
             print(f"AUC: {AUC}")
             fpr, tpr, thresholds = roc_curve(label, score)
@@ -112,12 +123,17 @@ class ModelTrainer():
             AUPRC = auc(recall, precision)
             print(f"AUPRC: {AUPRC}")
             if plot_hotfig:
-                self.vis.plotROC(fpr=fpr, tpr=tpr, auc=AUC, fig_name="val_epoch_" + str(val_ID) + '_ROC_imshow.png')
-                self.vis.plotPR(recall=recall, precision=precision, auprc=AUPRC, fig_name="val_epoch_" + str(val_ID) + '_PR_imshow.png')
+                self.vis.plotROC(fpr=fpr, tpr=tpr, auc=AUC, fig_name="val_epoch_" + str(epoch) + '_ROC_imshow.png')
+                self.vis.plotPR(recall=recall, precision=precision, auprc=AUPRC, fig_name="val_epoch_" + str(epoch) + '_PR_imshow.png')
 
+            # output loss to .txt
+            if not os.path.exists('./loss'):
+                os.makedirs('./loss')
+                print(f"路径 {'./loss'} 已创建")
             with open("./loss/evaluation_loss.txt", "w") as fp:
                 for loss in loss_epoch:
                     fp.write(str(loss) + "\n")
+
         print(f'Validation Average Loss: {np.sum(loss_epoch) / len(val_loader):.4f}')
 
     def UMAP_eva(self, train_loader, test_loader, model_path=None, check_mode=0, item_mode=0):

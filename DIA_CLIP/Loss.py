@@ -52,57 +52,23 @@ class InfoNCELoss(nn.Module):
             loss = -1 * torch.log(ratio)
         return loss, torch.tensor(0), torch.tensor(0)
 
-class RINCE(nn.Module):
-    def __init__(self, lamb=0.5, q = 0.5, exp_ratio = 5):
-        super().__init__()
-        self.lamb = lamb
-        self.q = q
-        self.exp_ratio = exp_ratio
-
-    def forward(self, x, y, label):
-        """
-        :param x: [batch, d_model] often peptide
-        :param y: [batch, d_model] often chrom
-        :param label: [batch]
-        :return:
-        """
-        B, _ = x.shape
-        self.exp_ratio = np.log(B)
-        device = x.device
-        x_t = x[label == 1]
-        x_f = x[label == 0]
-        y_t = y[label == 1]
-        y_f = y[label == 0]
-        B_t, _ = x_t.shape
-        B_f, _ = x_f.shape
-
-        sim_t_vec = F.cosine_similarity(x_t, y_t, dim=-1) * self.exp_ratio #[B_t]
-        sim_all_vec= F.cosine_similarity(x[:, None, :], y[None, :, :], dim=-1).reshape(-1) * self.exp_ratio #[B*B]
-
-        loss = -1 * torch.sum(torch.exp(self.q * sim_t_vec), dim=-1)/self.q + torch.pow(self.lamb * torch.sum(torch.exp(sim_all_vec), dim=-1), exponent=self.q)/self.q
-        return loss, torch.tensor(0), torch.tensor(0)
-
 class CrossEntropyLoss(nn.Module):
     def __init__(
             self,
-            alpha = 0.25,
-            delta = 0.1,
-            beta = 0.01,
-            gamma =0.01,
+            t_ratio = 0.75,
+            inner_dist_ratio = 0.1,
+            norm_ratio = 0.01,
             is_dist = True,
-            only_true = False,
-            loss_mode = 0,
-            consider_inner_dist = True
     ):
         super().__init__()
-        self.beta = beta
-        self.alpha = alpha
-        self.gamma = gamma
-        self.delta = delta
-        self.only_true = only_true
+        self.t_ratio = t_ratio
+        self.norm_ratio = norm_ratio
+        self.inner_dist_ratio = inner_dist_ratio
         self.is_dist = is_dist
-        self.loss_mode = loss_mode
-        self.consider_inner_dist = consider_inner_dist
+
+        self.cross_entropy_loss = nn.CrossEntropyLoss()
+        self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
+        self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, peptide_feature, chrom_feature, label):
         """
@@ -120,88 +86,61 @@ class CrossEntropyLoss(nn.Module):
         B_t, _ = peptide_feature_t.shape
         B_f, _ = peptide_feature_f.shape
 
+        # Compute true part loss
+        target_true = torch.arange(0, B, 1).to(device)[label == 1]
+        dist_matrix_true = self.compute_distance_matrix(chrom_feature_t, peptide_feature)    # distance [batch_t, batch]
+        ce_loss_true = self.cross_entropy_loss(dist_matrix_true, target_true)
+        norm_loss_true = torch.mean(torch.norm(chrom_feature_t - peptide_feature_t, dim=-1, p=2), dim=-1)
+        loss_true = self.norm_ratio * norm_loss_true + (1 - self.norm_ratio) * ce_loss_true
+
+        # false part
+        equal_prob = (torch.ones(B_f, B) / B).to(device)
+        dist_matrix_false_1 = self.compute_distance_matrix(peptide_feature_f, chrom_feature)
+        prob_1 = self.softmax(dist_matrix_false_1)
+        loss_false_1 = self.kl_div_loss(prob_1.log(), equal_prob)
+
+        dist_matrix_false_2 = self.compute_distance_matrix(chrom_feature_f, peptide_feature)
+        prob_2 = self.softmax(dist_matrix_false_2)
+        loss_false_2 = self.kl_div_loss(prob_2.log(), equal_prob)
+
+        loss_false = (loss_false_1 + loss_false_2) / 2
+        norm_loss_false = torch.mean(-torch.norm(chrom_feature_f - peptide_feature_f, dim=-1, p=2), dim=-1)
+        loss_false = self.norm_ratio * norm_loss_false + (1 - self.norm_ratio) * loss_false
+
+        loss = self.t_ratio * loss_true + (1 - self.t_ratio) * loss_false
+        inner_loss = self.compute_inner_distance_loss(chrom_feature, peptide_feature)
+        loss = self.inner_dist_ratio * inner_loss + (1 - self.inner_dist_ratio) * loss
+
+        return {'loss': loss, 'loss_t': loss_true, 'loss_f': loss_false, 'inner_loss': inner_loss}
+
+    def compute_inner_distance_loss(self, chrom_feature, peptide_feature):
+        B, d_model = peptide_feature.shape
+        device = chrom_feature.device
+        # Compute inner distance loss for chrom_feature and peptide_feature
+        target = torch.arange(0, B, 1).to(device)
+
+        # Compute distance matrices (scaled)
+        chrom_dist_matrix = self.compute_distance_matrix(chrom_feature, chrom_feature)
+        peptide_dist_matrix = self.compute_distance_matrix(peptide_feature, peptide_feature)
+
+        # Compute CrossEntropy loss for both distance matrices
+        chrom_loss = self.cross_entropy_loss(chrom_dist_matrix, target)
+        peptide_loss = self.cross_entropy_loss(peptide_dist_matrix, target)
+
+        # Average the two losses
+        inner_dist_loss = 0.5 * chrom_loss + 0.5 * peptide_loss
+
+        return inner_dist_loss
+
+    def compute_distance_matrix(self, chrom_feature, peptide_feature):
+        B, d_model = peptide_feature.shape
+        device = chrom_feature.device
         if self.is_dist:
-            # true part
-            target = torch.arange(0, B, 1).to(device)[label == 1]
-            loss_t_fc = nn.CrossEntropyLoss()
-            logits = -1 * torch.cdist(chrom_feature_t, peptide_feature, p=2)  # cos similarity [batch_t, batch]
-            loss_t = loss_t_fc(logits, target)
-            if self.loss_mode == 1:
-                ap_loss_t = torch.mean(torch.norm( chrom_feature_t - peptide_feature_t , dim=-1, p=2, keepdim=False) , dim=-1)
-                loss_t = self.beta * ap_loss_t + (1-self.beta) * loss_t
-
-            # false part
-            softmax_fc = nn.Softmax(dim=-1)
-            KL_fc = nn.KLDivLoss(reduction='batchmean')
-            equal_prob = (torch.ones(B_f, B) / B).to(device)
-            dist_matrix = -1 * torch.cdist(peptide_feature_f, chrom_feature, p=2)
-            prob = softmax_fc(dist_matrix)
-            loss_f_1 = KL_fc(prob.log(), equal_prob)
-            dist_matrix = -1 * torch.cdist(chrom_feature_f, peptide_feature, p=2)
-            prob = softmax_fc(dist_matrix)
-            loss_f_2 = KL_fc(prob.log(), equal_prob)
-            loss_f = (loss_f_1 + loss_f_2) / 2
-            if self.loss_mode == 1:
-                ap_loss_f = torch.mean(-1 * torch.norm( chrom_feature_f - peptide_feature_f , dim=-1, p=2, keepdim=False), dim=-1)
-                loss_f = self.gamma * ap_loss_f + (1-self.gamma) * loss_f
-
-            if self.only_true:
-                loss = loss_t
-            else:
-                loss = (1 - self.alpha) * loss_t + self.alpha * loss_f
-            
-            #inner dist part
-            if self.consider_inner_dist:
-                loss_t_fc = nn.CrossEntropyLoss()
-                target = torch.arange(0, B, 1).to(device)
-                logits = -1 * torch.cdist(chrom_feature, chrom_feature, p=2) / (d_model**0.5)
-                inner_dist_loss = loss_t_fc(logits, target)
-                logits = -1 * torch.cdist(peptide_feature, peptide_feature, p=2) / (d_model**0.5)
-                inner_dist_loss = 0.5 * inner_dist_loss + 0.5 * loss_t_fc(logits, target)
-
-                loss = (1- self.delta) * loss + self.delta * inner_dist_loss
-
+            dist_matrix = - torch.cdist(chrom_feature, peptide_feature, p=2)
         else:
             exp_ratio = np.log(B)
-            #true part
-            target = torch.arange(0, B, 1).to(device)[label == 1]
-            loss_t_fc = nn.CrossEntropyLoss()
-            logits = F.cosine_similarity(chrom_feature_t[:, None, :], peptide_feature[None, :, :], dim=-1) * exp_ratio  # cos similarity [batch_t, batch]
-            loss_t = loss_t_fc(logits, target)
-
-            #false part
-            softmax_fc = nn.Softmax(dim=-1)
-            KL_fc = nn.KLDivLoss(reduction='batchmean')
-            equal_prob = (torch.ones(B_f, B) / B).to(device)
-            sim_matrix = F.cosine_similarity(peptide_feature_f[:, None, :], chrom_feature[None, :, :], dim=-1) * exp_ratio
-            prob = softmax_fc(sim_matrix)
-            loss_f_1 = KL_fc(prob.log(), equal_prob)
-            sim_matrix = F.cosine_similarity(chrom_feature_f[:, None, :], peptide_feature[None, :, :], dim=-1) * exp_ratio
-            prob = softmax_fc(sim_matrix)
-            loss_f_2 = KL_fc(prob.log(), equal_prob)
-            loss_f = (loss_f_1 + loss_f_2) / 2
-
-            if self.only_true:
-                loss = loss_t
-            else:
-                loss = (1 - self.alpha) *loss_t + self.alpha * loss_f
-
-            #inner dist part
-            if self.consider_inner_dist:
-                loss_t_fc = nn.CrossEntropyLoss()
-                target = torch.arange(0, B, 1).to(device)
-                logits = F.cosine_similarity(chrom_feature[:, None, :], chrom_feature[None, :, :], dim=-1) * exp_ratio
-                inner_dist_loss = loss_t_fc(logits, target)
-                logits = F.cosine_similarity(peptide_feature[:, None, :], peptide_feature[None, :, :], dim=-1) * exp_ratio
-                inner_dist_loss = 0.5 * inner_dist_loss + 0.5 * loss_t_fc(logits, target)
-                loss = (1- self.delta) * loss + self.delta * inner_dist_loss
-
-        if self.consider_inner_dist:
-            return loss, loss_t, loss_f, inner_dist_loss
-        else:
-            return loss, loss_t, loss_f
-
-
+            dist_matrix = F.cosine_similarity(chrom_feature[:, None, :], peptide_feature[None, :, :], dim=-1) * exp_ratio
+        return dist_matrix
 
 
 

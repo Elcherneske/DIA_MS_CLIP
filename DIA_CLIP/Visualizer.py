@@ -1,3 +1,4 @@
+import os
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
@@ -30,6 +31,8 @@ class Visualizer():
         plt.xlabel('peptide')
         plt.title('Heatmap of similarity for label false')
         plt.colorbar(label='Color Scale')
+        if not os.path.exists('./fig'):
+            os.makedirs('./fig')
         plt.savefig("./fig/" + "sim_" + fig_name, dpi=300)
         plt.close()
 
@@ -46,6 +49,9 @@ class Visualizer():
         plt.xlabel('peptide')
         plt.title('Heatmap of distance for label false')
         plt.colorbar(label='Color Scale')
+
+        if not os.path.exists('./fig'):
+            os.makedirs('./fig')
         plt.savefig("./fig/" + "dist_"  + fig_name, dpi=300)
         plt.close()
 
@@ -62,6 +68,9 @@ class Visualizer():
         plt.xlabel('UMAP 1')
         plt.ylabel('UMAP 2')
         plt.colorbar(scatter, label='Label')
+
+        if not os.path.exists('./fig'):
+            os.makedirs('./fig')
         plt.savefig("./fig/" + fig_name, dpi=300)
         plt.close()
 
@@ -73,6 +82,9 @@ class Visualizer():
         plt.ylabel('True Positive Rate')
         plt.title('ROC Curve')
         plt.legend()
+
+        if not os.path.exists('./fig'):
+            os.makedirs('./fig')
         plt.savefig("./fig/" + fig_name, dpi=300)
         plt.close()
 
@@ -83,5 +95,8 @@ class Visualizer():
         plt.ylabel('Precision')
         plt.title('Precision-Recall Curve')
         plt.legend()
+
+        if not os.path.exists('./fig'):
+            os.makedirs('./fig')
         plt.savefig("./fig/" + fig_name, dpi=300)
         plt.close()

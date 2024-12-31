@@ -21,10 +21,10 @@ class DIAClip(nn.Module):
     def __init__(
             self,
             d_model = 512,
-            RT_dim = 32,
-            n_head = 16,
+            RT_dim = 50,
+            n_head = 32,
             dropout = 0.2,
-            dim_feedforward = 1024,
+            dim_feedforward = 2048,
             bin_size = 2500,
             max_mz_range = 5000,
             device = 'cuda',
@@ -34,7 +34,6 @@ class DIAClip(nn.Module):
             mode_spec = 'spec_split_RT'
     ):
         super().__init__()
-
         self.mode_peptide = mode_peptide
         self.mode_spec = mode_spec
         print(f"DIA CLIP mode_peptide:{self.mode_peptide}, mode_spec:{self.mode_spec}")
