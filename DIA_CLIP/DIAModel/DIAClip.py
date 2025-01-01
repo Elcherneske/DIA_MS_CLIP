@@ -94,6 +94,8 @@ class DIAClip(nn.Module):
         peptide_feature = self.peptide_forward(data=data)
         spec_feature = self.spec_forward(data=data)
 
+        peptide_feature = peptide_feature.squeeze(1)
+        spec_feature = spec_feature.squeeze(1)
         return peptide_feature, spec_feature
 
     def load(self, file_path):

@@ -62,8 +62,8 @@ class ModelTrainer():
     def train_one_epoch(self, train_loader, epoch, num_epochs):
         self.model.train()
         loss_epoch = []
-        with tqdm(enumerate(train_loader), desc=f"Epoch: {epoch + 1}/{num_epochs}") as pbar:
-            for n_step, data in pbar:
+        with tqdm(train_loader, desc=f"Epoch: {epoch + 1}/{num_epochs}") as pbar:
+            for n_step, data in enumerate(pbar):
                 peptide_feature, chrom_feature = self.model(data)
                 self.optimizer.zero_grad()
                 loss_dict = self.criterion(peptide_feature, chrom_feature, data["label"])
@@ -104,8 +104,8 @@ class ModelTrainer():
         label = []
         score = []
         with torch.no_grad():
-            with tqdm(enumerate(val_loader), desc=f"Validation:") as pbar:
-                for n_step, data in pbar:
+            with tqdm(val_loader, desc=f"Validation:") as pbar:
+                for n_step, data in enumerate(pbar):
                     peptide_feature, chrom_feature = self.model(data)
                     loss_dict = self.criterion(peptide_feature, chrom_feature, data["label"])
                     loss_epoch.append(loss_dict['loss'].item())
