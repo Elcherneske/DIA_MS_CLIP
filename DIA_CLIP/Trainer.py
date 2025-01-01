@@ -86,8 +86,8 @@ class ModelTrainer():
                 fp.write(str(loss) + "\n")
 
     def save_model(self, epoch_ID):
-        if not os.path.exists('./model'):
-            os.makedirs('./model')
+        if not os.path.exists('model'):
+            os.makedirs('model')
             print(f"路径 {'./model'} 已创建")
         torch.save(self.model.state_dict(), "./model/epoch_" + str(epoch_ID) + "_model.pt")
         print(f'Model saved to {"./model/epoch_" + str(epoch_ID) + "_model.pt"}')
