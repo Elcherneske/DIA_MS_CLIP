@@ -138,7 +138,7 @@ class DataChecker:
 
 if __name__ == "__main__":
     # dataset1 = MSDataset(".\\DatasetFormer\\data_12_15.pkl", is_train=False)
-    # loader1 = DataLoader(dataset=dataset1, batch_size=2, shuffle=True)
+    # loader1 = DataLoader(Dataset=dataset1, batch_size=2, shuffle=True)
     # for index, data in enumerate(loader1):
     #     print(data)
     #     if index > 2:

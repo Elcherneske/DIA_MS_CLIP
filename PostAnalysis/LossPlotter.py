@@ -2,7 +2,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 class LossPlotter:
     def __init__(self, directory_path, start_idx, end_idx):
         """
@@ -21,7 +20,7 @@ class LossPlotter:
         读取指定编号范围内的 training_loss_x.txt 文件，并将其中的 loss 数据加载到列表中。
         """
         for idx in range(self.start_idx, self.end_idx + 1):
-            file_path = os.path.join(self.directory_path, f'training_loss_{idx}.txt')
+            file_path = os.path.join(self.directory_path, f'evaluation_{idx}_loss.txt')
             if os.path.exists(file_path):
                 with open(file_path, 'r') as file:
                     # 假设每行是一个loss值，将其读取为浮点数并添加到loss_data列表中

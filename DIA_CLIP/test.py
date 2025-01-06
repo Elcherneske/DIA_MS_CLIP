@@ -22,8 +22,8 @@ def pearson_correlation(x, y):
 
 
 def main():
-    pre_filename = '../dataset/xlc_pre_MSFragger.pkl'
-    frag_filename = '../dataset/xlc_frg_MSFragger.pkl'
+    pre_filename = '../Dataset/xlc_pre_MSFragger.pkl'
+    frag_filename = '../Dataset/xlc_frg_MSFragger.pkl'
     RT_dim = 20
     batch_size = 5
     device = 'cpu'

@@ -9,10 +9,10 @@ from Loss import *
 def init_arg_parser():
     parser = argparse.ArgumentParser()
     #database parameters
-    parser.add_argument('--file_path', default='../dataset/Fig1_MP-DIA-120min-120kMS1-6W120k_MHRM.pkl')
+    parser.add_argument('--file_path', default='../Dataset/Fig1_MP-DIA-120min-120kMS1-6W120k_MHRM.pkl')
     parser.add_argument('--mz_divide_charge', action='store_true', default=False)
     parser.add_argument('--chrom_channel_norm', action='store_true', default=False)
-    parser.add_argument('--dataset', default='ms')
+    parser.add_argument('--Dataset', default='ms')
     #model parameters
     parser.add_argument('--RT_dim', default=50, type=int)
     parser.add_argument('--hidden_layer', default=2048, type=int)
