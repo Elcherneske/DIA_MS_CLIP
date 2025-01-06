@@ -57,7 +57,7 @@ class ModelTrainer():
             self.train_one_epoch(epoch=epoch, num_epochs=num_epochs, train_loader=train_loader)
             if self.is_save_model:
                 self.save_model(epoch)
-            self.validate(val_loader=val_loader, val_ID=epoch, plot_hotfig=True)
+            self.validate(val_loader=val_loader, epoch=epoch, plot_hotfig=True)
 
     def train_one_epoch(self, train_loader, epoch, num_epochs):
         self.model.train()

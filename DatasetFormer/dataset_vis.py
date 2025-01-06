@@ -43,15 +43,20 @@ class DataVisualizer():
         label = data["label"].detach().cpu().numpy()
         print(label)
 
-        # 绘制三维散点图
-        plt.subplot(1, 2, 1)
-        for chrom in peptide_chrom:
-            plt.plot(peptide_RT, chrom)
+        fig, axs = plt.subplots(1, 2)
+        for index, chrom in enumerate(peptide_chrom):
+            axs[0].plot(peptide_RT, chrom, label=peptide_mz[index])
+        axs[0].set_title("precursors chromatogram")  # 设置标题
+        axs[0].legend(fontsize=6)
+        axs[0].set_xlabel('Retention Time')  # 设置横坐标标题
+        axs[0].set_ylabel('Intensity')  # 设置纵坐标标题
 
-        # 绘制三维表面图
-        plt.subplot(1, 2, 2)
-        for chrom in fragment_chrom:
-            plt.plot(fragment_RT, chrom)
+        for index, chrom in enumerate(fragment_chrom):
+            axs[1].plot(fragment_RT, chrom, label=fragment_mz[index])
+        axs[1].set_title("fragments chromatogram")  # 设置标题
+        axs[1].legend(fontsize=6)
+        axs[1].set_xlabel('Retention Time')  # 设置横坐标标题
+        axs[1].set_ylabel('Intensity')  # 设置纵坐标标题
 
         # 显示图形
         plt.tight_layout()
