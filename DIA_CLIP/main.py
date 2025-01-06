@@ -80,9 +80,7 @@ def main():
     print(f"parameter number: {sum(p.numel() for p in dia_clip.parameters())}\n")
 
     #form loss function
-    if args.loss_function == "InfoNCELoss":
-        loss_fn = InfoNCELoss(exp_ratio=args.loss_exp_ratio)
-    elif args.loss_function == "CrossEntropyLoss":
+    if args.loss_function == "CrossEntropyLoss":
         loss_fn = CrossEntropyLoss(t_ratio=args.loss_t_ratio, norm_ratio=args.loss_norm_ratio, inner_dist_ratio=args.loss_dist_ratio, is_dist=args.loss_is_dict)
         print(f"loss function: {args.loss_function}, t_ratio:{args.loss_t_ratio}, norm_ratio:{args.loss_norm_ratio}, dist_ratio:{args.loss_dist_ratio}, is_dict:{args.loss_is_dict}")
 
